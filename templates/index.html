@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Defect Tracker Pro - Local</title>
+    <!-- تم استخدام تنسيقات Bootstrap الأساسية محلياً -->
+    <style>
+        :root {
+            --bg: #f8f9fa;
+            --card-bg: #ffffff;
+            --primary: #007bff;
+            --text: #333;
+            --muted: #6c757d;
+            --border: #dee2e6;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding-bottom: 50px; }
+        .navbar { background: #1a1a1a; color: white; padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; position: sticky; top:0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .container { padding: 2rem; max-width: 1400px; margin: auto; }
+        
+        /* Dashboard Stats */
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; margin-bottom: 2rem; }
+        .stat-card { background: var(--card-bg); padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); text-align: center; border-left: 5px solid var(--primary); }
+        .stat-card h4 { margin: 0; color: var(--muted); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
+        .stat-card .value { font-size: 2rem; font-weight: bold; margin-top: 0.5rem; color: #1a1a1a; }
+        
+        .card { background: var(--card-bg); padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 2rem; border: 1px solid var(--border); }
+        h3 { margin-top: 0; margin-bottom: 1.5rem; font-size: 1.25rem; font-weight: 600; color: #1a1a1a; border-bottom: 2px solid var(--bg); padding-bottom: 0.5rem; }
+        
+        /* Form Styling */
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; }
+        .form-group { display: flex; flex-direction: column; }
+        .form-group label { margin-bottom: 0.5rem; font-size: 0.85rem; font-weight: 600; color: #555; }
+        .form-group input, .form-group select, .form-group textarea { padding: 0.7rem; border: 1.5px solid var(--border); border-radius: 8px; font-size: 0.95rem; transition: border-color 0.2s; }
+        .form-group input:focus { outline: none; border-color: var(--primary); }
+        .btn { padding: 0.8rem 2rem; border: none; border-radius: 8px; cursor: pointer; color: white; font-weight: 600; font-size: 1rem; transition: opacity 0.2s; align-self: flex-start; }
+        .btn-primary { background: var(--primary); }
+        .btn:hover { opacity: 0.9; }
+        
+        /* Table Styling */
+        .table-responsive { overflow-x: auto; }
+        .table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; }
+        .table th, .table td { padding: 1rem; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+        .table th { background: #fefefe; font-weight: 600; color: var(--muted); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.5px; }
+        .table tr:hover { background: #f9f9f9; }
+        .badge { padding: 0.35rem 0.75rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+        .badge-open { background: #fff3cd; color: #856404; }
+        .badge-closed { background: #d4edda; color: #155724; }
+        .badge-pending { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <h2 style="margin:0;">🏗️ Defect Tracker Pro - Local</h2>
+        <div style="font-size: 0.8rem; opacity: 0.8;">OFFLINE PRODUCTION MODE</div>
+    </div>
+
+    <div class="container">
+        <!-- Dashboard Section -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h4>Total Output</h4>
+                <div class="value">{{ stats.total_output }}</div>
+            </div>
+            <div class="stat-card" style="border-left-color: #dc3545;">
+                <h4>Total Defects</h4>
+                <div class="value">{{ stats.total_defects }}</div>
+            </div>
+            <div class="stat-card" style="border-left-color: #ffc107;">
+                <h4>Defect Rate (%)</h4>
+                <div class="value">{{ stats.defect_rate }}%</div>
+            </div>
+            <div class="stat-card" style="border-left-color: #17a2b8;">
+                <h4>PPM Score</h4>
+                <div class="value">{{ stats.ppm }}</div>
+            </div>
+        </div>
+
+        <!-- Add Defect Form -->
+        <div class="card">
+            <h3>📝 New Record Entry</h3>
+            <form action="/add" method="POST">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" name="date" value="2026-04-18" required>
+                    </div>
+                    <div class="form-group">
+                        <label>PIC (Line Leader)</label>
+                        <input type="text" name="pic" placeholder="e.g. Abdallah Sayed" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Model</label>
+                        <select name="model">
+                            <option>P17</option>
+                            <option>P7E</option>
+                            <option>Somalia</option>
+                            <option>P15A</option>
+                            <option>P15AP</option>
+                            <option>O19AE</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Shift</label>
+                        <select name="shift">
+                            <option>Day</option>
+                            <option>Night</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Serial Number (S/N)</label>
+                        <input type="text" name="sn" placeholder="Device S/N">
+                    </div>
+                    <div class="form-group">
+                        <label>Symptom (العرض)</label>
+                        <input type="text" name="symptom" list="symptom-list" placeholder="Select or type..." required>
+                        <datalist id="symptom-list">
+                            <option value="TOTAL">TOTAL (إنتاج)</option>
+                            <option value="No Power">No Power</option>
+                            <option value="Touch not Working">Touch not Working</option>
+                            <option value="Display Dot">Display Dot</option>
+                        </datalist>
+                    </div>
+                    <div class="form-group">
+                        <label>NG Station</label>
+                        <input type="text" name="ng_station" placeholder="Testing Station">
+                    </div>
+                    <div class="form-group">
+                        <label>Defect Qty</label>
+                        <input type="number" name="defect_qty" value="1" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label>Root Cause</label>
+                        <select name="root_cause">
+                            <option value="">Select Root Cause...</option>
+                            <option>Scratch Back camera</option>
+                            <option>Damage White RF Coaxial Main PCBA</option>
+                            <option>Damage Ultra Camera</option>
+                            <option>Damage Motor</option>
+                            <option>PCBA Damage</option>
+                            <option>Damage Sub PCBA</option>
+                            <option>Damage Speaker</option>
+                            <option>Scratch Ultra Lens</option>
+                            <option>Black RF Defect Material</option>
+                            <option>DECO Plate Defect Material</option>
+                            <option>Damage Receiver</option>
+                            <option>ANT PCBA Damage</option>
+                            <option>Sub PCBA Defect Material</option>
+                            <option>Receiver Defect Material</option>
+                            <option>OIS Camera Defect Material</option>
+                            <option>Ultra Camera Defect Material</option>
+                            <option>Fingerprint Defect Material</option>
+                            <option>NG BTB Assembly</option>
+                            <option>Lens Defect Material</option>
+                            <option>Battery Cover Defect Material</option>
+                            <option>Battery Defect Material</option>
+                            <option>OLEDM Defect Material</option>
+                            <option>Damage BTB</option>
+                            <option>Dust in Light Sensor</option>
+                            <option>NG Optical Rubber Assy</option>
+                            <option>Damage Camera BTB</option>
+                            <option>Damage Fingerprint BTB</option>
+                            <option>Dent Rear Camera</option>
+                            <option>Dust in Fingerprint</option>
+                            <option>Dust Rear Camera</option>
+                            <option>Dust Front Camera</option>
+                            <option>Dust BTB</option>
+                            <option>Glue on Light Sensor</option>
+                            <option>Broken Sidekey Antennas</option>
+                            <option>sim card damage</option>
+                            <option>Glue on Sidekey</option>
+                            <option>No Black RF Cable</option>
+                            <option>No White RF Cable</option>
+                            <option>Locked Cameras</option>
+                            <option>Wipped QR Code</option>
+                            <option>Mix Material</option>
+                            <option>Mix Cameras</option>
+                            <option>Broken Sub PCBA Antenna</option>
+                            <option>Broken Main PCBA Antenna</option>
+                            <option>Missing Files</option>
+                            <option>Damage Speaker Rubber</option>
+                            <option>NG Rework Material</option>
+                            <option>Wide Screw Hole</option>
+                            <option>Missing Screw</option>
+                            <option>Up Screw</option>
+                            <option>Up Black RF</option>
+                            <option>Up Speaker</option>
+                            <option>Open Middle frame Clips Asc</option>
+                            <option>CCD Machine Error</option>
+                            <option>Screw Machine High Torque</option>
+                            <option>Missing Bracket</option>
+                            <option>Missing Speaker</option>
+                            <option>Sub PCBA Component Damage</option>
+                            <option>Dust BTB connector</option>
+                            <option>FPC BTB Damage</option>
+                            <option>Dust Speaker</option>
+                            <option>Motor Defect Material</option>
+                            <option>Pending Repair</option>
+                            <option>Battery BTB Broken Damage</option>
+                            <option>PCBA Component Damage</option>
+                            <option>Cut Camera Ultra</option>
+                            <option>Cut FPC</option>
+                            <option>Cut OLEDM FPC</option>
+                            <option>Scratch Back Camera Lens Asc</option>
+                            <option>Dust PCBA</option>
+                            <option>NG Assembly BTB</option>
+                            <option>Missing Sticker</option>
+                            <option>Dust Sude Key</option>
+                            <option>Dust Recever</option>
+                            <option>NG Assembly Finger Print</option>
+                            <option>White RF Cut</option>
+                            <option>Software Upgrade</option>
+                            <option>Waterproof foam cover middle frame connect pins</option>
+                            <option>Cat Rear Ultra</option>
+                            <option>NG Assimbly Missing Sticker</option>
+                            <option>Rubber Cut Damage</option>
+                            <option>FPC Damage</option>
+                            <option>Side Asc</option>
+                            <option>NG Assembly Motor</option>
+                            <option>Shifted FPC</option>
+                            <option>NG Assembly</option>
+                            <option>NG Assembly Missing</option>
+                            <option>Power On</option>
+                            <option>Dust Middle frame</option>
+                            <option>Dust Ultra Camera</option>
+                            <option>Dust Sub PCBA</option>
+                            <option>ANT PCBA Defect Material</option>
+                            <option>OIS Camera Damage</option>
+                            <option>Speaker Defect Material</option>
+                            <option>Cut Side Key</option>
+                            <option>NG Assembly Double Face</option>
+                            <option>Damage Foam</option>
+                            <option>NG Foam Assembly</option>
+                            <option>Dust PCBA</option>
+                            <option>Shifted Sidekey</option>
+                            <option>PCBA Defect Material</option>
+                            <option>OLEDM Damage</option>
+                            <option>Damage Middle frame</option>
+                            <option>Front Camera Defect Material</option>
+                            <option>Black RF Cut</option>
+                            <option>Reversed Receiver</option>
+                            <option>Damage BTB OLEDM</option>
+                            <option> Middle frame Defect Material</option>
+                            <option>Double Face Receiver issue</option>
+                            <option>Shifted motor</option>
+                            <option>Mic Rubber material defect</option>
+                            <option>speaker Rubber material defect</option>
+                            <option>Shifted Receiver</option>
+                            <option>Shifted Conductive</option>
+                            <option>NG Assembly Rceeiver Rubber</option>
+                            <option>Auto Restart</option>
+                            <option>Audio Jack</option>
+                            <option>Damage PCBA BTB</option>
+                            <option>Damaged Flash</option>
+                            <option>audio jac</option>
+                            <option>Dent Middle Frame</option>
+                            <option>DENT TP</option>
+                            <option>NG Reveiver FPC</option>
+                            <option>Flash Defect Material</option>
+                            <option>Damage Main Mic Rubber</option>
+                            <option>Missing Flash</option>
+                            <option>FPC Defect Material</option>
+                            <option>OLEDM BTB Damage</option>
+                            <option>Damage PCBA Component</option>
+                            <option>Repair Issue</option>
+                            <option>Camera Ultra Defect Material</option>
+                            <option>Fake Issue</option>
+                            <option>Shifted FPC Receiver</option>
+                            <option>Bad Ring Assembly</option>
+                            <option>Main Camera BTB Damage</option>
+                            <option>Front Camera BTB Damage</option>
+                            <option>Shifted Bracket Pad</option>
+                            <option>Shifted Flash PCBA</option>
+                            <option>Upper Bracket Defect Material</option>
+                            <option>Damage Upper Bracket</option>
+                            <option>OLEDM Defect Material</option>
+                            <option>Finger Under lens In Front</option>
+                            <option>Machince Issue</option>
+                            <option>UV Machine Issue</option>
+                            <option>Screen Machine Issue</option>
+                            <option>Corrosion in Battery Cover</option>
+                            <option>Damage Black RF Coaxial Main PCBA</option>
+                            <option>Damage Coaxial Sub PCBA</option>
+                            <option>Extra Material in OLEDM</option>
+                            <option>Wrong Camera CAP removal method lead to FPC bended</option>
+                            <option>Device by incident dropped while handling by PD operator</option>
+                            <option>Device by incident hit while handling to the M/C</option>
+                            <option>Device Bad handling on the Assy line by PD operator</option>
+                            <option>Device Bad handling on the Test line by PD Asc</option>
+                            <option>Device Bad handling on the Packing line by PD operator</option>
+                            <option>point deco</option>
+                            <option>Pending</option>
+                            <option>Batrrey Cover damage</option>
+                            <option>Antenna Bracket Defect Material</option>
+                            <option>NG ASSY Rubber</option>
+                            <option>Damage OLEDM</option>
+                            <option>Up White RF</option>
+                            <option>White RF Defect Material</option>
+                            <option>Damage Steel Sheet</option>
+                            <option>Steel sheet scratch</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Related Station</label>
+                        <input type="text" name="related_station">
+                    </div>
+                    <div class="form-group">
+                        <label>Defected Item</label>
+                        <input type="text" name="defected_item">
+                    </div>
+                    <div class="form-group">
+                        <label>Defect PIC (Team)</label>
+                        <select name="defect_pic">
+                            <option>PD</option>
+                            <option>IQC</option>
+                            <option>ME</option>
+                            <option>Repair</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Category</label>
+                        <select name="category">
+                            <option>Manpower</option>
+                            <option>Material</option>
+                            <option>Machine</option>
+                            <option>Method</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Actual Out</label>
+                        <input type="number" name="actual_out" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Status</label>
+                        <select name="status">
+                            <option value="Open">Open</option>
+                            <option value="Closed">Closed</option>
+                            <option value="Pending">Pending</option>
+                            <option value="In Progress">In Progress</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top: 1.5rem; grid-column: 1 / -1;">
+                    <label>Remarks / Notes</label>
+                    <textarea name="remarks" rows="2"></textarea>
+                </div>
+                <div style="margin-top: 2rem;">
+                    <button type="submit" class="btn btn-primary shadow">💾 Save Defect Entry</button>
+                    <button type="reset" class="btn" style="background: #e9ecef; color: #333; margin-left: 10px;">Clear Form</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Data Display Section -->
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                <h3 style="margin-bottom: 0;">📋 Production & Defect Records</h3>
+                <div style="font-size: 0.85rem; color: var(--muted);">Showing latest data from database</div>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Model</th>
+                            <th>Station</th>
+                            <th>Symptom</th>
+                            <th>Qty</th>
+                            <th>PIC</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if defects %}
+                            {% for defect in defects %}
+                            <tr>
+                                <td>{{ defect.date }}</td>
+                                <td><strong>{{ defect.model }}</strong></td>
+                                <td>{{ defect.ng_station or '-' }}</td>
+                                <td>
+                                    {% if defect.symptom == 'TOTAL' %}
+                                        <span style="color: #28a745; font-weight: bold;">TOTAL OUTPUT</span>
+                                    {% else %}
+                                        {{ defect.symptom }}
+                                    {% endif %}
+                                </td>
+                                <td>{{ defect.defect_qty }}</td>
+                                <td>{{ defect.pic }}</td>
+                                <td>
+                                    <span class="badge badge-{{ defect.status|lower|replace(' ', '-') }}">
+                                        {{ defect.status }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="7" style="text-align: center; padding: 2rem; color: var(--muted);">No records found in database. Start by adding a record above.</td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

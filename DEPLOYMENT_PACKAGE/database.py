@@ -5,9 +5,9 @@ import os
 
 # يتم جلب الإعدادات من متغيرات البيئة للأمان
 DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_NAME = os.getenv("DB_NAME", "defect_db")
+DB_NAME = os.getenv("DB_NAME", "defects")
 DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASS = os.getenv("DB_PASS", "password")
+DB_PASS = os.getenv("DB_PASS", "A.m@2050")
 DB_PORT = os.getenv("DB_PORT", "5432")
 
 def get_connection():

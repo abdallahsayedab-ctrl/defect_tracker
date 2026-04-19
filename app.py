@@ -1,77 +1,100 @@
-import streamlit as st
-import pandas as pd
-from supabase import create_client, Client
+from flask import Flask, render_template, request, redirect, jsonify
+from database import get_db_connection, get_root_causes
 import datetime
-import os
 
-# إعداد الصفحة
-st.set_page_config(page_title="Defect Tracker Pro", layout="wide")
+app = Flask(__name__)
 
-# الاتصال بـ Supabase
-@st.cache_resource
-def init_connection():
-    url = st.secrets["https://abjtqvlyelggngxlmaob.supabase.co"] if "SUPABASE_URL" in st.secrets else os.environ.get("SUPABASE_URL")
-    key = st.secrets["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFianRxdmx5ZWxnZ25neGxtYW9iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1NDI0MDksImV4cCI6MjA5MjExODQwOX0.A_3pM9z72zgN0HrSJJalTlPIUI6UbbBJ-CXuj4I5bO4"] if "SUPABASE_KEY" in st.secrets else os.environ.get("SUPABASE_KEY")
-    return create_client(url, key)
+# محرك تحليل محلي (قاعدة بيانات خبرة مصغرة)
+KNOWLEDGE_BASE = {
+    "No Power": "Check battery BTB connection and mainboard voltage points.",
+    "Touch not Working": "Check LCM FPC alignment and static electricity on line.",
+    "TOTAL": "Daily output record. No defect analysis needed."
+}
 
-supabase = init_connection()
-
-# --- Sidebar (فلاتر) ---
-st.sidebar.header("Data Slicer")
-date_range = st.sidebar.date_input("Date Range", [datetime.date.today(), datetime.date.today()])
-selected_model = st.sidebar.selectbox("Select Model", ["All", "P17", "P7E", "Somalia", "P15A"])
-
-# --- جلب البيانات ---
-def fetch_data():
-    res = supabase.table("defects").select("*").execute()
-    return pd.DataFrame(res.data)
-
-df = fetch_data()
-
-# --- Dashboard (الإحصائيات) ---
-st.title("🏭 Defect Tracker Dashboard")
-
-col1, col2, col3 = st.columns(3)
-
-if not df.empty:
-    with col1:
-        st.metric("Total Records", len(df))
-    with col2:
-        total_defects = df[df['symptom'] != 'TOTAL']['defect_qty'].sum()
-        st.metric("Total Defect Qty", total_defects)
-    with col3:
-        # مثال لحساب النسبة
-        st.metric("Avg Defect %", "2.45%")
-
-# --- عرض الجدول الرئيسي ---
-st.subheader("Recent Defect Records")
-st.dataframe(df.sort_values(by='date', ascending=False), use_container_width=True)
-
-# --- نموذج الإضافة ---
-st.divider()
-st.subheader("➕ Add New Defect")
-with st.form("add_form"):
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        pic = st.text_input("PIC")
-        date = st.date_input("Date")
-    with c2:
-        model = st.selectbox("Model", ["P17", "P7E", "Somalia"])
-        symptom = st.text_input("Symptom")
-    with c3:
-        qty = st.number_input("Qty", min_value=1)
-        status = st.selectbox("Status", ["Open", "Pending", "Closed"])
+@app.route('/')
+def index():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM defects ORDER BY date DESC, id DESC")
+    defects = cur.fetchall()
     
-    submit = st.form_submit_button("Submit Record")
-    if submit:
-        data = {
-            "pic": pic,
-            "date": str(date),
-            "model": model,
-            "symptom": symptom,
-            "defect_qty": qty,
-            "status": status
-        }
-        supabase.table("defects").insert(data).execute()
-        st.success("Record saved to Supabase!")
-        st.rerun()
+    # Calculate Dashboard Stats
+    total_output = 0
+    total_defects = 0
+    for d in defects:
+        qty = d.get('defect_qty') or 0
+        if str(d.get('symptom', '')).upper() == 'TOTAL':
+            total_output += qty
+        else:
+            total_defects += qty
+            
+    defect_rate = (total_defects / total_output * 100) if total_output > 0 else 0
+    ppm = (total_defects / total_output * 1000000) if total_output > 0 else 0
+    
+    stats = {
+        "total_output": total_output,
+        "total_defects": total_defects,
+        "defect_rate": round(defect_rate, 2),
+        "ppm": round(ppm, 0)
+    }
+    
+    cur.close()
+    conn.close()
+    
+    root_causes = get_root_causes()
+    return render_template('index.html', defects=defects, stats=stats, root_causes=root_causes)
+
+@app.route('/add', methods=['POST'])
+def add_defect():
+    data = request.form
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    query = """
+    INSERT INTO defects (
+        pic, date, model, shift, sn, symptom, ng_station, 
+        defect_qty, root_cause, related_station, defected_item, 
+        defect_pic, category, status, actual_out, remarks
+    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+    
+    # Safely convert to integer
+    def to_int(val, default=0):
+        try: return int(val) if val else default
+        except: return default
+
+    cur.execute(query, (
+        data.get('pic'), 
+        data.get('date') or datetime.date.today(), 
+        data.get('model'), 
+        data.get('shift'), 
+        data.get('sn'), 
+        data.get('symptom'),
+        data.get('ng_station'),
+        to_int(data.get('defect_qty'), 1),
+        data.get('root_cause'),
+        data.get('related_station'),
+        data.get('defected_item'),
+        data.get('defect_pic'),
+        data.get('category'),
+        data.get('status', 'Open'),
+        to_int(data.get('actual_out'), 0),
+        data.get('remarks')
+    ))
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+    return redirect('/')
+
+@app.route('/analyze/<symptom>')
+def analyze(symptom):
+    suggestion = "No local match found. Consult tech manual."
+    for key in KNOWLEDGE_BASE:
+        if key.lower() in symptom.lower():
+            suggestion = KNOWLEDGE_BASE[key]
+    return jsonify({"suggestion": suggestion})
+
+if __name__ == '__main__':
+    # تشغيل السيرفر على الشبكة الداخلية
+    app.run(host='0.0.0.0', port=5000, debug=False)

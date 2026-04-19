@@ -1,0 +1,37 @@
+# Project Name: Defect Tracker Pro (Fully Offline & Local)
+
+## ✨ NEW: Dashboard & KPI Tracking Included
+The app now automatically calculates:
+- Total Output (From entries where Symptom = 'TOTAL')
+- Total Defects
+- Defect Rate %
+- PPM Score
+
+## 🛑 IMPORTANT: HOW TO RUN
+Do NOT double-click the `index.html` file. If you do, the dashboard and data will NOT show up.
+You MUST run the Python server to see the website.
+
+1. Open your Terminal / CMD.
+2. Go to the project folder.
+3. Run: `python server.py`
+4. Open your browser and go to: `http://localhost:5000`
+
+## Prerequisites
+1. Python 3.10+ installed.
+2. PostgreSQL 14+ database server running.
+
+## Detailed Setup:
+1. Copy all files to the internal server.
+2. Install dependencies: `pip install -r requirements.txt`
+3. Database Setup:
+   - Create a database named `defect_db`.
+   - Run the SQL code inside `schema.sql` to create exactly 17 columns.
+4. Open `database.py`:
+   - Change `your_password` to your real Postgres password.
+5. Run: `python server.py`
+
+## Folder Structure:
+- `server.py`: The "Brain" (Flask Server).
+- `templates/index.html`: The "Face" (Frontend with Dashboard).
+- `database.py`: The Connection logic.
+- `schema.sql`: The Database structure.
