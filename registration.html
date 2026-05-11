@@ -1,0 +1,828 @@
+{% extends "base.html" %}
+{% block pagetitle %}Registration
+<script>
+/* ── Column filter inputs in thead ─────────────────────────── */
+.thead-labels th {
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.7rem;
+  letter-spacing: 0.6px;
+  padding: 0.35rem 0.5rem;
+  white-space: nowrap;
+}
+.thead-filters th {
+  background: var(--dark3);
+  padding: 0.2rem 0.25rem;
+}
+.col-filter {
+  width: 100%;
+  background: var(--dark);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 0.72rem;
+  padding: 0.18rem 0.28rem;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+  cursor: pointer;
+  appearance: auto;   /* keep native dropdown arrow */
+  max-width: 100%;
+}
+.col-filter:focus {
+  outline: none;
+  border-color: var(--gold);
+  background: var(--card);
+}
+/* highlight active filter (select with non-empty value) */
+.col-filter.active {
+  border-color: var(--gold);
+  background: rgba(201,151,58,0.12);
+  color: var(--gold);
+  font-weight: 600;
+}
+/* option items inherit dark bg */
+.col-filter option { background: var(--card); color: var(--text); }
+
+/* ── TOTAL row auto-show/hide ─────────────────────────────── */
+(function(){
+  var symptomInput = document.querySelector('input[name="symptom"]');
+  if(!symptomInput) return;
+
+  // Fields to HIDE when TOTAL is typed
+  var hideOnTotal = [
+    'ng_station','defect_qty','root_cause','related_station',
+    'defected_item','defected_item_sn','defected_item_qty',
+    'defect_pic','category','status','sn'
+  ];
+  // Fields to SHOW only when TOTAL
+  var showOnTotal = ['target_in','target_out','actual_in','actual_out'];
+
+  function findField(name){
+    var el = document.querySelector('[name="'+name+'"]');
+    if(!el) return null;
+    // Walk up to find the .reg-field or fg wrapper
+    var p = el.closest('.reg-field') || el.parentElement.closest('.reg-field') || el.parentElement;
+    return p;
+  }
+
+  function applyTotalMode(isTotal){
+    hideOnTotal.forEach(function(name){
+      var wrap = findField(name);
+      if(wrap){ wrap.style.display = isTotal ? 'none' : ''; }
+    });
+    // PPM and defect% are auto-calculated — show info when TOTAL
+    var infoEl = document.getElementById('totalInfoBox');
+    if(infoEl){ infoEl.style.display = isTotal ? 'block' : 'none'; }
+  }
+
+  // Initial state
+  applyTotalMode(symptomInput.value.trim().toUpperCase() === 'TOTAL');
+
+  // Live update
+  symptomInput.addEventListener('input', function(){
+    applyTotalMode(this.value.trim().toUpperCase() === 'TOTAL');
+  });
+  symptomInput.addEventListener('change', function(){
+    applyTotalMode(this.value.trim().toUpperCase() === 'TOTAL');
+  });
+})();
+
+
+</script>
+
+{% endblock %}
+{% block content %}
+
+<!-- Model Required Overlay -->
+<div class="moverlay {% if selected_model or request.args.get('skip') %}hidden{% endif %}" id="modelOverlay">
+  <div class="mdialog" style="position:relative;">
+    <!-- ✕ Exit button — closes overlay and goes to current nav page or stays -->
+    <button onclick="dismissOverlay()" title="Close"
+            style="position:absolute;top:0.6rem;right:0.7rem;background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer;line-height:1;padding:0.2rem 0.4rem;border-radius:4px;"
+            onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">✕</button>
+    <div style="font-size:2rem;margin-bottom:0.5rem;">🏭</div>
+    <h2>Select a Model</h2>
+    <p>Choose a production model to view or enter defect records.</p>
+    <form method="GET" action="{{ url_for('defect_registration') }}" style="display:flex;flex-direction:column;gap:0.7rem;">
+      <select name="model" class="fc" required>
+        <option value="">-- Choose Model --</option>
+        {% for m in models %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn btn-primary" style="justify-content:center;">✅ Confirm</button>
+    </form>
+    <a href="{{ url_for('defect_registration') }}?skip=1" onclick="document.getElementById('modelOverlay').classList.add('hidden');return false;"
+       style="display:block;margin-top:0.8rem;font-size:0.75rem;color:var(--muted);text-align:center;cursor:pointer;">
+      View all records without filter
+    </a>
+  </div>
+</div>
+
+<!-- Top Action Bar -->
+<div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;margin-bottom:1.2rem;">
+  <h1 style="font-family:'Rajdhani',sans-serif;font-size:1.35rem;font-weight:700;color:var(--text);border-bottom:2px solid var(--gold);padding-bottom:0.4rem;flex:1;min-width:200px;">
+    📝 Defect Tracker {% if selected_model %}<span style="color:var(--gold);font-size:1rem;">– {{ selected_model }}</span>{% endif %}
+  </h1>
+</div>
+
+<!-- Filter + Action Buttons Row -->
+<form method="GET" action="{{ url_for('defect_registration') }}" id="filterForm">
+<div style="display:flex;align-items:flex-end;gap:0.6rem;flex-wrap:wrap;margin-bottom:1.2rem;">
+
+  <div class="fg" style="flex:1;min-width:130px;">
+    <label>Model</label>
+    <select name="model" class="fc" onchange="document.getElementById('filterForm').submit()">
+      <option value="">All Models</option>
+      {% for m in models %}<option value="{{ m }}" {% if selected_model==m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+    </select>
+  </div>
+
+  <div class="fg" style="flex:1;min-width:120px;">
+    <label>Single Date</label>
+    <input type="date" name="date" class="fc" value="{{ sel_date or '' }}">
+  </div>
+
+  <div class="fg" style="flex:1;min-width:120px;">
+    <label>From</label>
+    <input type="date" name="date_from" class="fc" value="{{ date_from or '' }}">
+  </div>
+
+  <div class="fg" style="flex:1;min-width:120px;">
+    <label>To</label>
+    <input type="date" name="date_to" class="fc" value="{{ date_to or '' }}">
+  </div>
+
+  <button type="submit" class="btn btn-primary">&#128269; Filter</button>
+  <a href="{{ url_for('defect_registration') }}" class="btn btn-sec">&#10006; Clear</a>
+  {% if user_role in ['admin','super_admin'] %}
+  <a href="{{ url_for('export_excel', model=selected_model or '', date_from=date_from or '', date_to=date_to or '') }}"
+     class="btn btn-success">&#128229; Export</a>
+  {% endif %}
+</div>
+</form>
+
+
+<!-- ── Bulk Delete Panel ─────────────────────────────────────────── -->
+{% if user_role in ['admin','super_admin'] %}
+<div class="card" style="border-top:3px solid var(--err);margin-bottom:1.2rem;">
+  <div class="card-title" style="color:var(--err);">&#128465; Delete Records</div>
+  <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end;">
+
+    <!-- Delete by date -->
+    <form method="POST" action="{{ url_for('delete_bulk') }}"
+          onsubmit="return confirm('Delete ALL records for this date?')"
+          style="display:flex;gap:0.5rem;align-items:flex-end;flex-wrap:wrap;">
+      <input type="hidden" name="mode" value="date">
+      <div class="fg" style="margin:0;">
+        <label>Delete by Date</label>
+        <input type="date" name="del_date" class="fc" required style="width:175px;">
+      </div>
+      <button type="submit" class="btn btn-danger btn-sm">&#128465; Delete Day</button>
+    </form>
+
+    <!-- Delete by model -->
+    <form method="POST" action="{{ url_for('delete_bulk') }}"
+          onsubmit="return confirm('Delete ALL records for this model?')"
+          style="display:flex;gap:0.5rem;align-items:flex-end;flex-wrap:wrap;">
+      <input type="hidden" name="mode" value="model">
+      <div class="fg" style="margin:0;">
+        <label>Delete by Model</label>
+        <select name="del_model" class="fc" required style="width:160px;">
+          <option value="">-- Select Model --</option>
+          {% for m in models %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-danger btn-sm">&#128465; Delete Model</button>
+    </form>
+
+    <!-- Delete ALL -->
+    <form method="POST" action="{{ url_for('delete_bulk') }}"
+          onsubmit="return confirm('⚠️ This will permanently delete ALL records. Are you absolutely sure?')"
+          style="margin-left:auto;">
+      <input type="hidden" name="mode" value="all">
+      <button type="submit" class="btn btn-danger" style="font-size:0.82rem;">
+        ⚠️ Delete ALL Records
+      </button>
+    </form>
+
+  </div>
+</div>
+{% endif %}
+
+{% if can_edit %}
+<!-- NEW RECORD ENTRY CARD -->
+<div class="card" style="border-top:3px solid var(--gold);margin-bottom:1.2rem;">
+
+  <!-- Card header -->
+  <div style="display:flex;align-items:center;gap:0.6rem;background:#1A1A2E;margin:-1rem -1.15rem 1.2rem;padding:0.8rem 1.2rem;border-radius:9px 9px 0 0;">
+    <span style="color:var(--gold);font-size:1rem;">＋</span>
+    <span style="font-family:'Rajdhani',sans-serif;font-size:1rem;font-weight:700;color:#fff;letter-spacing:0.5px;">New Record Entry</span>
+  </div>
+
+  <form method="POST" action="{{ url_for('add_defect') }}">
+
+    <!-- Two-column layout: Left | Right -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 2rem;" class="reg-grid">
+
+      <!-- ── LEFT COLUMN ── -->
+      <div style="display:flex;flex-direction:column;gap:1.1rem;">
+
+        <!-- Date -->
+        <div class="reg-field">
+          <label class="reg-label">Date <span style="color:var(--err);">*</span></label>
+          <input type="date" name="date" class="reg-input" value="{{ datetime.today().strftime('%Y-%m-%d') }}" required>
+        </div>
+
+        <!-- PIC -->
+        <div class="reg-field">
+          <label class="reg-label">PIC (Line Leader)</label>
+          <select name="pic" class="reg-input">
+            <option value="">-- Select PIC --</option>
+            {% for p in pics %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+          </select>
+        </div>
+
+        <!-- Model -->
+        <div class="reg-field">
+          <label class="reg-label">Model <span style="color:var(--err);">*</span></label>
+          <select name="model" class="reg-input" required>
+            <option value="">-- Select Model --</option>
+            {% for m in models %}<option value="{{ m }}" {% if selected_model==m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+          </select>
+        </div>
+
+        <!-- Shift -->
+        <div class="reg-field">
+          <label class="reg-label">Shift</label>
+          <select name="shift" class="reg-input">
+            <option value="Day">Day</option>
+            <option value="Night">Night</option>
+          </select>
+        </div>
+
+        <!-- Serial Number with camera -->
+        <div class="reg-field">
+          <label class="reg-label">Serial Number (S/N)</label>
+          <div style="display:flex;gap:0.5rem;align-items:center;">
+            <input type="text" name="sn" id="snInput" class="reg-input" placeholder="Type or scan S/N" style="flex:1;">
+            <button type="button" class="cam-btn" title="Scan QR/Barcode" onclick="openQR('snInput')">📷</button>
+          </div>
+        </div>
+
+        <!-- Symptom -->
+        <div class="reg-field">
+          <label class="reg-label">Symptom <span style="color:var(--err);">*</span></label>
+          <div style="position:relative;">
+            <input type="text" name="symptom" class="reg-input" list="symptomList"
+                   placeholder="Type or select..." required style="padding-right:2rem;">
+            <span style="position:absolute;right:0.7rem;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;">⌄</span>
+          </div>
+          <datalist id="symptomList">{% for s in symptoms %}<option value="{{ s }}">{% endfor %}</datalist>
+        </div>
+
+        <!-- NG Station -->
+        <div class="reg-field">
+          <label class="reg-label">NG Station</label>
+          <div style="position:relative;">
+            <input type="text" name="ng_station" class="reg-input" list="ngList" placeholder="Select station" style="padding-right:2rem;">
+            <span style="position:absolute;right:0.7rem;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;">⌄</span>
+          </div>
+          <datalist id="ngList">{% for s in ng_stations %}<option value="{{ s }}">{% endfor %}</datalist>
+        </div>
+
+        <!-- Defect Qty -->
+        <div class="reg-field">
+          <label class="reg-label">Defect Qty</label>
+          <input type="number" name="defect_qty" class="reg-input" value="1" min="0">
+        </div>
+
+        <!-- Root Cause -->
+        <div class="reg-field">
+          <label class="reg-label">Root Cause</label>
+          <select name="root_cause" class="reg-input">
+            <option value="">-- Select Root Cause --</option>
+            {% for rc in root_causes %}<option value="{{ rc }}">{{ rc }}</option>{% endfor %}
+          </select>
+        </div>
+
+        <!-- Related Station -->
+        <div class="reg-field">
+          <label class="reg-label">Related Station</label>
+          <input type="text" name="related_station" class="reg-input" list="relatedList" placeholder="">
+          <datalist id="relatedList">{% for s in related_stations %}<option value="{{ s }}">{% endfor %}</datalist>
+        </div>
+
+        <!-- Defected Item -->
+        <div class="reg-field">
+          <label class="reg-label">Defected Item</label>
+          <select name="defected_item" class="reg-input">
+            <option value="">-- Select Item --</option>
+            {% for i in defected_items %}<option value="{{ i }}">{{ i }}</option>{% endfor %}
+          </select>
+        </div>
+
+        <!-- Defected Item S/N with camera -->
+        <div class="reg-field">
+          <label class="reg-label">Defected Item S/N</label>
+          <div style="display:flex;gap:0.5rem;align-items:center;">
+            <input type="text" name="defected_item_sn" id="dsnInput" class="reg-input" placeholder="Type or scan S/N" style="flex:1;">
+            <button type="button" class="cam-btn" title="Scan QR/Barcode" onclick="openQR('dsnInput')">📷</button>
+          </div>
+        </div>
+
+        <!-- Bottom row: Qty + PIC Team + Category -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.8rem;">
+          <div class="reg-field" style="margin:0;">
+            <label class="reg-label">Defected Item Qty</label>
+            <input type="number" name="defected_item_qty" class="reg-input" value="1" min="1">
+          </div>
+          <div class="reg-field" style="margin:0;">
+            <label class="reg-label">Defect PIC (Team)</label>
+            <select name="defect_pic" class="reg-input">
+              <option value="PD">PD</option>
+              <option value="IQC">IQC</option>
+              <option value="ME">ME</option>
+              <option value="Repair">Repair</option>
+            </select>
+          </div>
+          <div class="reg-field" style="margin:0;">
+            <label class="reg-label">Category <span style="color:var(--err);">*</span></label>
+            <select name="category" class="reg-input">
+              {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <!-- Status -->
+        <div class="reg-field">
+          <label class="reg-label">Status <span style="color:var(--err);">*</span></label>
+          <select name="status" class="reg-input">
+            {% for s in statuses %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+          </select>
+        </div>
+
+      </div><!-- /LEFT -->
+
+      <!-- ── RIGHT COLUMN ── -->
+      <div style="display:flex;flex-direction:column;gap:1.1rem;">
+
+        <div class="reg-field">
+          <label class="reg-label">Target I/N</label>
+          <input type="number" name="target_in" class="reg-input" value="0" min="0">
+        </div>
+
+        <div class="reg-field">
+          <label class="reg-label">Target O/T</label>
+          <input type="number" name="target_out" class="reg-input" value="0" min="0">
+        </div>
+
+        <div class="reg-field">
+          <label class="reg-label">Actual I/N</label>
+          <input type="number" name="actual_in" class="reg-input" value="0" min="0">
+        </div>
+
+        <div class="reg-field">
+          <label class="reg-label">Actual O/T</label>
+          <input type="number" name="actual_out" class="reg-input" value="0" min="0">
+        </div>
+
+        <div class="reg-field" style="flex:1;">
+          <label class="reg-label">Remarks / Notes</label>
+          <textarea name="remarks" class="reg-input" placeholder="Any additional notes..." style="min-height:140px;"></textarea>
+        </div>
+
+
+        <!-- Auto-calc info box (shown only for TOTAL) -->
+        <div id="totalInfoBox" style="display:none;background:#EAF7EF;border:1px solid #1E8449;border-radius:8px;padding:0.75rem 1rem;font-size:0.8rem;color:#1E8449;">
+          <strong>&#9432; TOTAL row mode:</strong><br>
+          Defect % and PPM will be <strong>automatically calculated</strong> on save:<br>
+          <span style="font-family:monospace;font-size:0.75rem;">
+            Defect% = (Total day defects &divide; Actual O/T) &times; 100<br>
+            PPM = Defect% &times; 10,000
+          </span>
+        </div>
+      </div><!-- /RIGHT -->
+
+    </div><!-- /grid -->
+
+    <!-- Action Buttons -->
+    <div style="display:flex;gap:0.7rem;margin-top:1.4rem;padding-top:1rem;border-top:1px solid var(--border);flex-wrap:wrap;">
+      <button type="submit" class="btn btn-primary" style="min-width:140px;justify-content:center;font-size:0.9rem;">
+        💾 Save Record
+      </button>
+      <button type="reset" class="btn btn-sec" style="min-width:110px;justify-content:center;">
+        🔄 Reset
+      </button>
+    </div>
+
+  </form>
+</div>
+
+<!-- Import Excel -->
+{% if user_role in ['admin','super_admin'] %}
+<div class="card" style="margin-bottom:1.2rem;">
+  <div class="card-title">📤 Import Excel File</div>
+  <form method="POST" action="{{ url_for('import_excel') }}" enctype="multipart/form-data"
+        style="display:flex;align-items:center;gap:0.8rem;flex-wrap:wrap;">
+    <input type="file" name="file" accept=".xlsx,.xls" class="fc" style="max-width:320px;padding:0.38rem 0.7rem;">
+    <button type="submit" class="btn btn-orange">📥 Import</button>
+    <span style="font-size:0.75rem;color:var(--muted);">Supports your P17 Excel format</span>
+  </form>
+</div>
+{% endif %}
+
+<!-- Records Table -->
+<div class="card">
+  <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
+    <span>📋 Production &amp; Defect Records</span>
+    <span id="recCount" style="font-size:0.75rem;color:var(--muted);font-weight:400;">{{ defects|length }} records</span>
+  </div>
+
+  <!-- Mirror div: copies the table's scroll width so the bar appears on top -->
+  <div id="scrollMirrorWrap" style="overflow-x:auto;overflow-y:hidden;height:12px;border-radius:4px 4px 0 0;border:1px solid var(--border);border-bottom:none;background:var(--dark3);">
+    <div id="scrollMirror" style="height:1px;"></div>
+  </div>
+  <div class="twrap" id="tableWrap" style="border-radius:0 0 8px 8px;overflow-x:auto;">
+    <table class="table" id="defectsTable">
+      <thead>
+        <!-- Row 1: Column labels -->
+        <tr class="thead-labels">
+          <th>DATE</th><th>MODEL</th><th>SHIFT</th><th>PIC</th>
+          <th>SYMPTOM</th><th>NG STATION</th><th>DEFECT QTY</th>
+          <th>ACTUAL O/T</th><th>ROOT CAUSE</th><th>STATUS</th>
+          <th>REMARKS</th>
+          {% if can_edit %}<th>ACTIONS</th>{% endif %}
+        </tr>
+        <!-- Row 2: Column filter dropdowns (populated by JS from actual data) -->
+        <tr class="thead-filters" id="theadFilters">
+          <th><select class="col-filter" data-col="0"><option value="">All</option></select></th>
+          <th><select class="col-filter" data-col="1"><option value="">All</option></select></th>
+          <th><select class="col-filter" data-col="2"><option value="">All</option></select></th>
+          <th><select class="col-filter" data-col="3"><option value="">All</option></select></th>
+          <th><select class="col-filter" data-col="4"><option value="">All</option></select></th>
+          <th><select class="col-filter" data-col="5"><option value="">All</option></select></th>
+          <th><select class="col-filter" data-col="6"><option value="">All</option></select></th>
+          <th><select class="col-filter" data-col="7"><option value="">All</option></select></th>
+          <th><select class="col-filter" data-col="8"><option value="">All</option></select></th>
+          <th><select class="col-filter" data-col="9"><option value="">All</option></select></th>
+          <th><select class="col-filter" data-col="10"><option value="">All</option></select></th>
+          {% if can_edit %}<th style="background:var(--dark3);text-align:center;">
+            <button type="button" onclick="clearAllFilters()" title="Clear all filters"
+              style="background:rgba(201,151,58,0.15);border:1px solid var(--gold);border-radius:4px;color:var(--gold);cursor:pointer;font-size:0.72rem;padding:0.18rem 0.5rem;font-weight:600;">✕</button>
+          </th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% if defects %}
+          {% set ns = namespace(last_date='', day_defects=0, day_output=0) %}
+          {% for defect in defects %}
+            {% set row_date  = defect.date | string %}
+            {% set is_total   = defect.symptom | upper == 'TOTAL' %}
+            {% set is_pending = defect.status  | lower == 'pending' %}
+
+            {% if ns.last_date and row_date != ns.last_date %}
+              {% set rate = (ns.day_defects / ns.day_output * 100) if ns.day_output > 0 else 0 %}
+              <tr class="row-day">
+                <td colspan="2">📅 Day Total: {{ ns.last_date }}</td>
+                <td colspan="2"></td>
+                <td colspan="2" style="color:var(--daytotal-fg);">Output: {{ ns.day_output }}</td>
+                <td>{{ ns.day_defects }}</td>
+                <td></td>
+                <td>Rate: {{ "%.2f"|format(rate) }}%</td>
+                <td colspan="2">PPM: {{ "%.0f"|format(rate * 10000) }}</td>
+                {% if can_edit %}<td></td>{% endif %}
+              </tr>
+              {% set ns.day_defects = 0 %}
+              {% set ns.day_output  = 0 %}
+            {% endif %}
+
+            {% if is_total %}
+              {% set ns.day_output  = ns.day_output  + (defect.actual_out or 0) %}
+            {% else %}
+              {% set ns.day_defects = ns.day_defects + (defect.defect_qty or 0) %}
+            {% endif %}
+            {% set ns.last_date = row_date %}
+
+            <tr class="dr {% if is_total %}row-total{% elif is_pending %}row-pending{% endif %}">
+              <td>{{ defect.date }}</td>
+              <td><strong>{{ defect.model }}</strong></td>
+              <td>{{ defect.shift or '-' }}</td>
+              <td>{{ defect.pic or '-' }}</td>
+              <td>
+                {% if is_total %}
+                  <span style="font-weight:700;">📦 TOTAL OUTPUT</span>
+                {% else %}
+                  {{ defect.symptom or '-' }}
+                {% endif %}
+              </td>
+              <td>{{ defect.ng_station or '-' }}</td>
+              <td>{{ defect.defect_qty }}</td>
+              <td>{{ defect.actual_out or 0 }}</td>
+              <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ defect.root_cause }}">{{ defect.root_cause or '-' }}</td>
+              <td>
+                <span class="badge badge-{{ (defect.status or 'pending') | lower | replace(' ','-') }}">{{ defect.status or '-' }}</span>
+              </td>
+              <td style="max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ defect.remarks }}">{{ defect.remarks or '-' }}</td>
+              {% if can_edit %}
+              <td style="white-space:nowrap;">
+                <a href="{{ url_for('edit_defect', defect_id=defect.id) }}" class="btn btn-sec btn-sm">✏️</a>
+                <form method="POST" action="{{ url_for('delete_defect', defect_id=defect.id) }}"
+                      style="display:inline;" onsubmit="return confirm('Delete this record?')">
+                  <input type="hidden" name="model" value="{{ selected_model or '' }}">
+                  <button type="submit" class="btn btn-danger btn-sm">🗑</button>
+                </form>
+              </td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+
+          {% if ns.last_date %}
+          {% set rate = (ns.day_defects / ns.day_output * 100) if ns.day_output > 0 else 0 %}
+          <tr class="row-day">
+            <td colspan="2">📅 Day Total: {{ ns.last_date }}</td>
+            <td colspan="2"></td>
+            <td colspan="2" style="color:var(--daytotal-fg);">Output: {{ ns.day_output }}</td>
+            <td>{{ ns.day_defects }}</td>
+            <td></td>
+            <td>Rate: {{ "%.2f"|format(rate) }}%</td>
+            <td colspan="2">PPM: {{ "%.0f"|format(rate * 10000) }}</td>
+            {% if can_edit %}<td></td>{% endif %}
+          </tr>
+          {% endif %}
+
+        {% else %}
+        <tr>
+          <td colspan="12" style="text-align:center;padding:2.5rem;">
+            {% if has_filter %}
+            <div style="color:var(--muted);font-size:0.85rem;">No records match this filter.</div>
+            {% else %}
+            <div style="font-size:2rem;margin-bottom:0.5rem;">📋</div>
+            <div style="font-family:'Rajdhani',sans-serif;font-size:1rem;font-weight:700;color:var(--text);margin-bottom:0.3rem;">Select a filter to load records</div>
+            <div style="font-size:0.82rem;color:var(--muted);">Choose a Model, Date, or Date Range in the filter bar.</div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endif %}{# /can_edit new entry #}
+
+<!-- Model Management -->
+{% if user_role in ['admin','super_admin'] %}
+<div class="card">
+  <div class="card-title">⚙️ Model Management</div>
+  <div style="display:flex;gap:0.8rem;flex-wrap:wrap;align-items:flex-end;">
+    <form method="POST" action="{{ url_for('add_model_route') }}" style="display:flex;gap:0.6rem;align-items:flex-end;">
+      <div class="fg" style="margin:0;">
+        <label>New Model Name</label>
+        <input type="text" name="name" class="fc" placeholder="e.g. P18" required style="width:160px;">
+      </div>
+      <button type="submit" class="btn btn-primary">➕ Add</button>
+    </form>
+  </div>
+  <div style="margin-top:0.9rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+    {% for m in models_full %}
+    <form method="POST" action="{{ url_for('delete_model_route', model_id=m.id) }}"
+          style="display:inline;" onsubmit="return confirm('Delete model {{ m.name }}?')">
+      <button type="submit" class="btn btn-sec btn-sm">{{ m.name }} ✕</button>
+    </form>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<style>
+/* ── Registration form field styles ───────────────────────────── */
+.reg-field { display:flex; flex-direction:column; gap:0.32rem; }
+.reg-label {
+  font-size:0.8rem; font-weight:500; color:var(--text);
+  letter-spacing:0.1px;
+}
+.reg-input {
+  background:#fff;
+  border:1.5px solid #D8D8D0;
+  color:var(--text);
+  border-radius:8px;
+  padding:0.6rem 0.85rem;
+  font-size:0.88rem;
+  width:100%;
+  transition:border-color 0.2s, box-shadow 0.2s;
+  font-family:inherit;
+  appearance:auto;
+}
+.reg-input:focus {
+  outline:none;
+  border-color:var(--gold);
+  box-shadow:0 0 0 3px rgba(201,151,58,0.12);
+}
+.reg-input[type="number"] { -moz-appearance:textfield; }
+textarea.reg-input { resize:vertical; }
+.cam-btn {
+  display:flex; align-items:center; justify-content:center;
+  width:42px; height:42px; flex-shrink:0;
+  background:#fff; border:1.5px solid #D8D8D0;
+  border-radius:8px; cursor:pointer; font-size:1.1rem;
+  transition:border-color 0.2s;
+}
+.cam-btn:hover { border-color:var(--gold); }
+/* Responsive registration grid */
+@media(max-width:768px) {
+  .reg-grid { grid-template-columns:1fr !important; gap:0; }
+  .reg-grid > div:first-child { margin-bottom:1rem; }
+}
+@media(max-width:480px) {
+  .reg-grid > div > div[style*="grid-template-columns:1fr 1fr 1fr"] {
+    grid-template-columns:1fr 1fr !important;
+  }
+}
+</style>
+
+
+<script>
+/* ── TOTAL row auto-show/hide ─────────────────────────────── */
+(function(){
+  var symptomInput = document.querySelector('input[name="symptom"]');
+  if(!symptomInput) return;
+
+  // Fields to HIDE when TOTAL is typed
+  var hideOnTotal = [
+    'ng_station','defect_qty','root_cause','related_station',
+    'defected_item','defected_item_sn','defected_item_qty',
+    'defect_pic','category','status','sn'
+  ];
+  // Fields to SHOW only when TOTAL
+  var showOnTotal = ['target_in','target_out','actual_in','actual_out'];
+
+  function findField(name){
+    var el = document.querySelector('[name="'+name+'"]');
+    if(!el) return null;
+    // Walk up to find the .reg-field or fg wrapper
+    var p = el.closest('.reg-field') || el.parentElement.closest('.reg-field') || el.parentElement;
+    return p;
+  }
+
+  function applyTotalMode(isTotal){
+    hideOnTotal.forEach(function(name){
+      var wrap = findField(name);
+      if(wrap){ wrap.style.display = isTotal ? 'none' : ''; }
+    });
+    // PPM and defect% are auto-calculated — show info when TOTAL
+    var infoEl = document.getElementById('totalInfoBox');
+    if(infoEl){ infoEl.style.display = isTotal ? 'block' : 'none'; }
+  }
+
+  // Initial state
+  applyTotalMode(symptomInput.value.trim().toUpperCase() === 'TOTAL');
+
+  // Live update
+  symptomInput.addEventListener('input', function(){
+    applyTotalMode(this.value.trim().toUpperCase() === 'TOTAL');
+  });
+  symptomInput.addEventListener('change', function(){
+    applyTotalMode(this.value.trim().toUpperCase() === 'TOTAL');
+  });
+})();
+</script>
+
+<script>
+/* ── Column header dropdown filters ─────────────────────────── */
+(function(){
+  var totalRows = {{ defects|length }};
+
+  /* Populate each <select> with unique sorted values from that column */
+  function buildSelects(){
+    var table = document.getElementById('defectsTable');
+    if(!table) return;
+    var selects = table.querySelectorAll('.col-filter');
+    selects.forEach(function(sel){
+      var col  = parseInt(sel.dataset.col, 10);
+      var seen = {};
+      table.querySelectorAll('tbody tr.dr').forEach(function(row){
+        var cells = row.querySelectorAll('td');
+        if(!cells[col]) return;
+        /* get raw text, normalise whitespace */
+        var t = cells[col].textContent.replace(/\s+/g,' ').trim();
+        /* skip empty, dashes, very long strings, pure numbers for non-qty cols */
+        if(!t || t === '-' || t.length > 80) return;
+        seen[t] = 1;
+      });
+      /* sort: numbers numerically, text alphabetically */
+      var vals = Object.keys(seen).sort(function(a,b){
+        var na = parseFloat(a), nb = parseFloat(b);
+        if(!isNaN(na) && !isNaN(nb)) return na - nb;
+        return a.localeCompare(b);
+      });
+      vals.forEach(function(v){
+        var opt   = document.createElement('option');
+        opt.value = v;
+        opt.text  = v;
+        sel.appendChild(opt);
+      });
+    });
+  }
+
+  /* Apply all active selects to hide/show rows */
+  function applyFilters(){
+    var table = document.getElementById('defectsTable');
+    if(!table) return;
+    var selects = table.querySelectorAll('.col-filter');
+
+    /* build filter map: col → exact value (lowercased) */
+    var filters   = {};
+    var anyActive = false;
+    selects.forEach(function(sel){
+      var v = sel.value;
+      sel.classList.toggle('active', !!v);
+      if(v){ filters[parseInt(sel.dataset.col,10)] = v.toLowerCase(); anyActive = true; }
+    });
+
+    var dataRows = table.querySelectorAll('tbody tr.dr');
+    var dayRows  = table.querySelectorAll('tbody tr.row-day');
+    var shown    = 0;
+
+    /* hide day-total rows while filtering */
+    dayRows.forEach(function(r){ r.style.display = anyActive ? 'none' : ''; });
+
+    dataRows.forEach(function(row){
+      var cells = row.querySelectorAll('td');
+      var pass  = true;
+      Object.keys(filters).forEach(function(col){
+        if(!pass) return;
+        var cell = cells[parseInt(col,10)];
+        /* exact match on full cell text (normalised) */
+        var cellText = cell ? cell.textContent.replace(/\s+/g,' ').trim().toLowerCase() : '';
+        if(cellText.indexOf(filters[col]) === -1) pass = false;
+      });
+      row.style.display = pass ? '' : 'none';
+      if(pass) shown++;
+    });
+
+    /* update record count badge */
+    var rc = document.getElementById('recCount');
+    if(rc){
+      if(anyActive){
+        rc.textContent = shown + ' / ' + totalRows + ' records';
+        rc.style.color  = shown < totalRows ? 'var(--gold)' : 'var(--muted)';
+      } else {
+        rc.textContent = totalRows + ' records';
+        rc.style.color  = 'var(--muted)';
+      }
+    }
+  }
+
+  /* Clear all selects */
+  window.clearAllFilters = function(){
+    document.querySelectorAll('.col-filter').forEach(function(s){
+      s.value = '';
+      s.classList.remove('active');
+    });
+    applyFilters();
+  };
+
+  /* Sync the top scrollbar mirror with the actual table scroll */
+  function initScrollMirror(){
+    var mirror  = document.getElementById('scrollMirrorWrap');
+    var wrapper = document.getElementById('tableWrap');
+    var inner   = document.getElementById('scrollMirror');
+    if(!mirror || !wrapper || !inner) return;
+
+    function syncMirrorWidth(){
+      var table = document.getElementById('defectsTable');
+      inner.style.width = (table ? table.scrollWidth : wrapper.scrollWidth) + 'px';
+    }
+    syncMirrorWidth();
+
+    /* two-way sync: scrolling either one moves the other */
+    mirror.addEventListener('scroll', function(){
+      wrapper.scrollLeft = mirror.scrollLeft;
+    });
+    wrapper.addEventListener('scroll', function(){
+      mirror.scrollLeft = wrapper.scrollLeft;
+    });
+    window.addEventListener('resize', syncMirrorWidth);
+  }
+
+  /* Table is already in DOM — run immediately, no DOMContentLoaded needed */
+  buildSelects();
+  initScrollMirror();
+  document.querySelectorAll('.col-filter').forEach(function(sel){
+    sel.addEventListener('change', applyFilters);
+  });
+})();
+</script>
+
+<script>
+function dismissOverlay(){
+  // Hide the overlay — user can navigate freely without selecting a model
+  var ov = document.getElementById('modelOverlay');
+  if(ov) ov.classList.add('hidden');
+  // Also push skip=1 to URL so overlay stays gone on back-navigation
+  var url = new URL(window.location.href);
+  url.searchParams.set('skip','1');
+  window.history.replaceState({},'',url.toString());
+}
+</script>
+{% endblock %}

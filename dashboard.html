@@ -1,0 +1,511 @@
+{% extends "base.html" %}
+{% block pagetitle %}Dashboard{% endblock %}
+{% block content %}
+
+<!-- Page Header -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.9rem;flex-wrap:wrap;gap:0.5rem;">
+  <div>
+    <h1 style="font-family:'Rajdhani',sans-serif;font-size:1.25rem;font-weight:700;color:var(--text);">Dashboard</h1>
+    <p style="font-size:0.72rem;color:var(--muted);">Production &amp; defect overview</p>
+  </div>
+  <div style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
+    <!-- Share link -->
+    <input id="shareUrl" readonly value="" onclick="this.select()"
+      style="font-size:0.72rem;font-family:monospace;background:#1A1A2E;color:#CCCCEE;
+             border:1px solid #3A3A55;border-radius:6px;padding:0.3rem 0.6rem;width:200px;cursor:pointer;">
+    <button onclick="copyLink()" class="btn btn-sec btn-sm">&#128203; Copy Link</button>
+    {% if user_role in ['admin','super_admin'] %}
+    <a href="{{ url_for('export_excel', model=selected_model or '', date_from=date_from or '', date_to=date_to or '') }}"
+       class="btn btn-sec btn-sm">&#128229; Export</a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── COMBINED FILTER (one form, 3 search fields) ─────────── -->
+<div class="card" style="margin-bottom:0.9rem;padding:0.75rem 1rem;">
+  <form method="GET" action="{{ url_for('dashboard') }}" id="dashFilter"
+        style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:0.6rem;">
+
+    <div class="fg" style="flex:0 0 130px;margin:0;">
+      <label>Model</label>
+      <select name="model" class="fc" onchange="document.getElementById('dashFilter').submit()">
+        <option value="">All Models</option>
+        {% for m in models %}<option value="{{ m }}" {% if selected_model==m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+      </select>
+    </div>
+
+    <div class="fg" style="flex:0 0 130px;margin:0;">
+      <label>Single Date</label>
+      <input type="date" name="date" class="fc" value="{{ sel_date or '' }}">
+    </div>
+    <div class="fg" style="flex:0 0 120px;margin:0;">
+      <label>From</label>
+      <input type="date" name="date_from" class="fc" value="{{ date_from or '' }}">
+    </div>
+    <div class="fg" style="flex:0 0 120px;margin:0;">
+      <label>To</label>
+      <input type="date" name="date_to" class="fc" value="{{ date_to or '' }}">
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-sm">&#128269; Apply</button>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-sec btn-sm">&#10006; Clear</a>
+  </form>
+</div>
+
+{% if has_filter %}
+<!-- ══════════════════════════════════════════════════════════
+     ROW 1 ─ Gauge+KPIs  |  Top 3 Defects  |  Top 3 Items
+     ══════════════════════════════════════════════════════════ -->
+<div style="display:grid;grid-template-columns:190px 1fr 1fr;gap:0.7rem;margin-bottom:0.7rem;" id="row1">
+
+  <!-- Gauge + mini KPIs -->
+  <div class="card" style="margin:0;padding:0.75rem 0.6rem;display:flex;flex-direction:column;align-items:center;">
+    <div style="font-size:0.6rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:0.3rem;">Defect Rate</div>
+    <canvas id="gaugeCanvas" width="150" height="92"></canvas>
+    <div style="font-family:'Rajdhani',sans-serif;font-size:1.6rem;font-weight:700;
+                color:{% if stats.defect_rate > 2 %}var(--err){% elif stats.defect_rate > 1 %}var(--warn){% else %}var(--ok){% endif %};
+                margin-top:-4px;line-height:1;">{{ stats.defect_rate }}%</div>
+    <div style="display:flex;justify-content:space-between;width:80%;font-size:0.58rem;color:var(--muted);margin-top:1px;margin-bottom:0.6rem;">
+      <span>0%</span><span>3%</span>
+    </div>
+    <div style="width:100%;border-top:1px solid var(--border);padding-top:0.55rem;
+                display:grid;grid-template-columns:1fr 1fr;gap:0.3rem;text-align:center;">
+      <div>
+        <div style="font-size:0.56rem;text-transform:uppercase;letter-spacing:0.8px;color:var(--muted);">Output</div>
+        <div style="font-family:'Rajdhani',sans-serif;font-size:1rem;font-weight:700;">{{ stats.total_output }}</div>
+      </div>
+      <div>
+        <div style="font-size:0.56rem;text-transform:uppercase;letter-spacing:0.8px;color:var(--muted);">Defects</div>
+        <div style="font-family:'Rajdhani',sans-serif;font-size:1rem;font-weight:700;color:var(--err);">{{ stats.total_defects }}</div>
+      </div>
+      <div style="grid-column:1/-1;">
+        <div style="font-size:0.56rem;text-transform:uppercase;letter-spacing:0.8px;color:var(--muted);">PPM</div>
+        <div style="font-family:'Rajdhani',sans-serif;font-size:1rem;font-weight:700;color:var(--info);">{{ stats.ppm }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top 3 Defects -->
+  <div class="card" style="margin:0;padding:0.8rem 1rem;">
+    <div class="card-title" style="margin-bottom:0.7rem;">&#9650; Top 3 Defects</div>
+    {% if chart_defects %}
+      {% set mx = chart_defects[0].total_qty %}
+      {% for d in chart_defects[:3] %}
+      {% set pct = (d.total_qty / stats.total_defects * 100) if stats.total_defects > 0 else 0 %}
+      {% set bw  = (d.total_qty / mx * 100)|int if mx > 0 else 0 %}
+      <div style="margin-bottom:{% if not loop.last %}0.75rem{% else %}0{% endif %};">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.2rem;">
+          <span style="font-size:0.8rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:58%;" title="{{ d.symptom }}">
+            {{ loop.index }}. {{ d.symptom }}
+          </span>
+          <span style="display:flex;gap:0.4rem;align-items:center;flex-shrink:0;">
+            <span style="font-family:'Rajdhani',sans-serif;font-size:0.95rem;font-weight:700;color:var(--err);">{{ d.total_qty }}</span>
+            <span style="font-size:0.7rem;color:var(--muted);background:var(--bg);padding:0.1rem 0.35rem;border-radius:4px;">{{ "%.1f"|format(pct) }}%</span>
+          </span>
+        </div>
+        <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
+          <div style="height:100%;width:{{ bw }}%;background:{% if loop.index==1 %}#E74C3C{% elif loop.index==2 %}#E67E22{% else %}#F39C12{% endif %};border-radius:3px;"></div>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div style="color:var(--muted);font-size:0.82rem;text-align:center;padding:1rem 0;">No defect data</div>
+    {% endif %}
+  </div>
+
+  <!-- Top 3 Items (no Pending) -->
+  <div class="card" style="margin:0;padding:0.8rem 1rem;">
+    <div class="card-title" style="margin-bottom:0.7rem;">&#128230; Top 3 Defected Items</div>
+    {% if chart_items %}
+      {% set mx2 = chart_items[0].total_qty %}
+      {% for item in chart_items[:3] %}
+      {% set pct2 = (item.total_qty / stats.total_defects * 100) if stats.total_defects > 0 else 0 %}
+      {% set bw2  = (item.total_qty / mx2 * 100)|int if mx2 > 0 else 0 %}
+      <div style="margin-bottom:{% if not loop.last %}0.75rem{% else %}0{% endif %};">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.2rem;">
+          <span style="font-size:0.8rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:58%;" title="{{ item.defected_item }}">
+            {{ loop.index }}. {{ item.defected_item }}
+          </span>
+          <span style="display:flex;gap:0.4rem;align-items:center;flex-shrink:0;">
+            <span style="font-family:'Rajdhani',sans-serif;font-size:0.95rem;font-weight:700;color:var(--info);">{{ item.total_qty }}</span>
+            <span style="font-size:0.7rem;color:var(--muted);background:var(--bg);padding:0.1rem 0.35rem;border-radius:4px;">{{ "%.1f"|format(pct2) }}%</span>
+          </span>
+        </div>
+        <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
+          <div style="height:100%;width:{{ bw2 }}%;background:{% if loop.index==1 %}#3498DB{% elif loop.index==2 %}#2980B9{% else %}#1ABC9C{% endif %};border-radius:3px;"></div>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div style="color:var(--muted);font-size:0.82rem;text-align:center;padding:1rem 0;">No item data</div>
+    {% endif %}
+  </div>
+
+</div><!-- /row1 -->
+
+<!-- ══════════════════════════════════════════════════════════
+     ROW 2 ─ Pareto (wide)  |  Station donut  |  Category donut
+     All three same fixed height, donuts with right-side legend
+     ══════════════════════════════════════════════════════════ -->
+<div style="display:grid;grid-template-columns:1fr 230px 215px;gap:0.7rem;margin-bottom:0.7rem;align-items:stretch;" id="row2">
+
+  <!-- Pareto: fixed height wrapper so bar labels never clip -->
+  <div class="card" style="margin:0;padding:0.65rem 0.8rem;">
+    <div class="card-title" style="font-size:0.76rem;margin-bottom:0.4rem;padding-bottom:0.3rem;">📊 Defect Pareto</div>
+    <div style="position:relative;height:190px;">
+      <canvas id="paretoChart" style="position:absolute;top:0;left:0;width:100%!important;height:100%!important;"></canvas>
+    </div>
+  </div>
+
+  <!-- Station donut: fixed height, legend right -->
+  <div class="card" style="margin:0;padding:0.65rem 0.7rem;">
+    <div class="card-title" style="font-size:0.76rem;margin-bottom:0.4rem;padding-bottom:0.3rem;">🏭 Top Station</div>
+    <div style="position:relative;height:190px;">
+      <canvas id="stationChart" style="position:absolute;top:0;left:0;width:100%!important;height:100%!important;"></canvas>
+    </div>
+  </div>
+
+  <!-- Category donut: fixed height, legend right -->
+  <div class="card" style="margin:0;padding:0.65rem 0.7rem;">
+    <div class="card-title" style="font-size:0.76rem;margin-bottom:0.4rem;padding-bottom:0.3rem;">📁 Category</div>
+    <div style="position:relative;height:190px;">
+      <canvas id="categoryChart" style="position:absolute;top:0;left:0;width:100%!important;height:100%!important;"></canvas>
+    </div>
+  </div>
+
+</div><!-- /row2 -->
+
+<!-- Daily Summary (compact) -->
+<div class="card" style="padding:0.75rem 1rem;">
+  <div class="card-title" style="font-size:0.82rem;margin-bottom:0.5rem;">&#128197; Daily Summary</div>
+  <div class="twrap">
+    <table class="table" style="font-size:0.77rem;">
+      <thead><tr><th>Date</th><th>Output</th><th>Defects</th><th>DR%</th><th>PPM</th></tr></thead>
+      <tbody>
+        {% for row in daily_summary %}
+        {% set rate = (row.total_defects / row.total_output * 100) if row.total_output > 0 else 0 %}
+        <tr class="row-day">
+          <td>{{ row.date }}</td><td>{{ row.total_output }}</td>
+          <td>{{ row.total_defects }}</td>
+          <td>{{ "%.2f"|format(rate) }}%</td>
+          <td>{{ "%.0f"|format(rate*10000) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:1.2rem;">No data yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% else %}
+<!-- ── Empty state: no filter selected ──────────────────── -->
+<div class="card" style="text-align:center;padding:3.5rem 2rem;margin-top:0.5rem;">
+  <div style="font-size:3rem;margin-bottom:1rem;">📊</div>
+  <div style="font-family:'Rajdhani',sans-serif;font-size:1.3rem;font-weight:700;color:var(--text);margin-bottom:0.5rem;">Select a Filter to View Data</div>
+  <p style="color:var(--muted);font-size:0.88rem;max-width:380px;margin:0 auto;">
+    Choose a <strong>Model</strong>, a <strong>Date</strong>, or a <strong>Date Range</strong> from the filter bar above, then click <strong>Apply</strong>.
+  </p>
+</div>
+{% endif %}
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+const defectRate  = {{ stats.defect_rate }};
+const topDefects  = {{ chart_defects    | tojson }};
+const catData     = {{ chart_categories | tojson }};
+const stationData = {{ chart_stations   | tojson }};
+const gc='#E8E8E0', lc='#888899';
+const COLORS=['#3498DB','#E74C3C','#2ECC71','#F39C12','#9B59B6','#1ABC9C','#E67E22','#FF6200','#C9973A','#95A5A6','#2980B9','#C0392B'];
+
+/* Share URL */
+(function(){
+  var el=document.getElementById('shareUrl');
+  if(el) el.value=location.protocol+'//'+location.hostname+(location.port&&location.port!='80'?':'+location.port:'');
+})();
+function copyLink(){
+  var el=document.getElementById('shareUrl');
+  navigator.clipboard.writeText(el.value).then(function(){
+    var b=document.querySelector('[onclick="copyLink()"]');
+    b.textContent='✅ Copied!';setTimeout(function(){b.textContent='📋 Copy Link';},2000);
+  }).catch(function(){el.select();document.execCommand('copy');});
+}
+
+/* Gauge */
+(function(){
+  var cv=document.getElementById('gaugeCanvas');if(!cv)return;
+  var ctx=cv.getContext('2d'),cx=75,cy=86,r=62,mx=3,v=Math.min(defectRate,mx);
+  [{f:0,t:1,c:'#27AE60'},{f:1,t:2,c:'#F39C12'},{f:2,t:2.5,c:'#E67E22'},{f:2.5,t:3,c:'#E74C3C'}]
+  .forEach(function(z){
+    ctx.beginPath();ctx.arc(cx,cy,r,Math.PI+(z.f/mx)*Math.PI,Math.PI+(z.t/mx)*Math.PI);
+    ctx.lineWidth=16;ctx.strokeStyle=z.c;ctx.stroke();
+  });
+  var na=Math.PI+(v/mx)*Math.PI;
+  ctx.save();ctx.translate(cx,cy);ctx.rotate(na);
+  ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(r-5,0);
+  ctx.lineWidth=2.5;ctx.strokeStyle='#1A1A2E';ctx.stroke();ctx.restore();
+  ctx.beginPath();ctx.arc(cx,cy,4,0,2*Math.PI);ctx.fillStyle='#1A1A2E';ctx.fill();
+})();
+
+/* Pareto */
+(function(){
+  if(!topDefects.length) return;
+  var labels  = topDefects.map(function(d){ return d.symptom; });
+  var qtys    = topDefects.map(function(d){ return Number(d.total_qty); });
+  var total   = qtys.reduce(function(a,b){ return a+b; }, 0);
+  var cum=0, cumPct = qtys.map(function(q){ cum+=q; return total>0 ? +(cum/total*100).toFixed(1) : 0; });
+
+  // Bar-top value labels plugin
+  var barTopLabels = {
+    id:'barTopLabels',
+    afterDatasetsDraw: function(chart){
+      var ctx  = chart.ctx;
+      var meta = chart.getDatasetMeta(0);   // bar dataset
+      var ds   = chart.data.datasets[0];
+      meta.data.forEach(function(bar, i){
+        var v = ds.data[i];
+        if(!v) return;
+        var x = bar.x;
+        var y = bar.y - 3;
+        ctx.save();
+        ctx.font = 'bold 8px Inter,sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        // thin dark halo for readability
+        ctx.strokeStyle = 'rgba(13,13,20,0.55)';
+        ctx.lineWidth   = 2.5;
+        ctx.lineJoin    = 'round';
+        ctx.strokeText(String(v), x, y);
+        ctx.fillStyle = '#E8E8F0';
+        ctx.fillText(String(v), x, y);
+        ctx.restore();
+      });
+    }
+  };
+
+  new Chart(document.getElementById('paretoChart'), {
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          type: 'bar',
+          label: 'Defect QTY',
+          data: qtys,
+          backgroundColor: '#3498DB',
+          yAxisID: 'y',
+          borderRadius: 3,
+          order: 2
+        },
+        {
+          type: 'line',
+          label: 'Cumulative %',
+          data: cumPct,
+          borderColor: '#E74C3C',
+          backgroundColor: 'rgba(231,76,60,0.06)',
+          yAxisID: 'y2',
+          tension: 0.35,
+          pointRadius: 2.5,
+          pointBackgroundColor: '#E74C3C',
+          fill: true,
+          order: 1
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      // Extra top padding so bar-top labels are never clipped
+      layout: { padding: { top: 22, right: 10, left: 2, bottom: 0 } },
+      plugins: {
+        legend: {
+          labels: { color: lc, font: { size: 8.5 }, boxWidth: 9, padding: 5 }
+        },
+        tooltip: { mode: 'index', intersect: false }
+      },
+      scales: {
+        x: {
+          ticks: {
+            color: lc,
+            font: { size: 7.5 },
+            maxRotation: 35,
+            minRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: 12
+          },
+          grid: { color: gc }
+        },
+        y: {
+          ticks: { color: lc, font: { size: 8 }, maxTicksLimit: 5 },
+          grid: { color: gc }
+        },
+        y2: {
+          position: 'right',
+          min: 0, max: 100,
+          ticks: {
+            color: lc,
+            font: { size: 8 },
+            maxTicksLimit: 5,
+            callback: function(v){ return v + '%'; }
+          },
+          grid: { drawOnChartArea: false }
+        }
+      }
+    },
+    plugins: [barTopLabels]
+  });
+})();
+
+/* Shared donut slice-label plugin factory */
+function makeSlicePlugin(id){
+  return {
+    id: id,
+    afterDatasetsDraw: function(chart){
+      var ctx  = chart.ctx;
+      var meta = chart.getDatasetMeta(0);
+      var tot  = chart.data.datasets[0].data.reduce(function(a,b){ return a+b; }, 0);
+      meta.data.forEach(function(arc, i){
+        var v = chart.data.datasets[0].data[i];
+        if(!v || !tot) return;
+        var pct = (v / tot * 100);
+        if(pct < 5) return;   // skip tiny slices
+        var angle = (arc.startAngle + arc.endAngle) / 2;
+        var r     = (arc.innerRadius + arc.outerRadius) / 2;
+        var x     = arc.x + Math.cos(angle) * r;
+        var y     = arc.y + Math.sin(angle) * r;
+        ctx.save();
+        ctx.font          = 'bold 8.5px Inter,sans-serif';
+        ctx.textAlign     = 'center';
+        ctx.textBaseline  = 'middle';
+        ctx.strokeStyle   = 'rgba(10,10,20,0.45)';
+        ctx.lineWidth     = 2.5;
+        ctx.lineJoin      = 'round';
+        ctx.strokeText(pct.toFixed(1)+'%', x, y);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(pct.toFixed(1)+'%', x, y);
+        ctx.restore();
+      });
+    }
+  };
+}
+
+/* Station donut */
+(function(){
+  if(!stationData.length) return;
+  var tot = stationData.reduce(function(a,d){ return a+Number(d.total_qty); }, 0);
+  new Chart(document.getElementById('stationChart'), {
+    type: 'doughnut',
+    data: {
+      labels: stationData.map(function(d){ return d.ng_station; }),
+      datasets: [{
+        data: stationData.map(function(d){ return Number(d.total_qty); }),
+        backgroundColor: COLORS,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.5)'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '50%',
+      layout: { padding: { top:2, right:4, bottom:2, left:0 } },
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: {
+            color: lc,
+            font:  { size: 8 },
+            boxWidth: 9,
+            padding: 5,
+            // Show label + value
+            generateLabels: function(ch){
+              var ds = ch.data;
+              return ds.labels.map(function(label, i){
+                var val = ds.datasets[0].data[i];
+                var bg  = ds.datasets[0].backgroundColor[i];
+                return { text: label+(val ? ' '+val : ''), fillStyle:bg, strokeStyle:bg, lineWidth:0, index:i };
+              });
+            }
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: function(c){
+              return ' '+c.label+': '+c.parsed+' ('+(tot>0?(c.parsed/tot*100).toFixed(1):0)+'%)';
+            }
+          }
+        }
+      }
+    },
+    plugins: [makeSlicePlugin('sl')]
+  });
+})();
+
+/* Category donut */
+(function(){
+  if(!catData.length) return;
+  var tot = catData.reduce(function(a,d){ return a+Number(d.total_qty); }, 0);
+  new Chart(document.getElementById('categoryChart'), {
+    type: 'doughnut',
+    data: {
+      labels: catData.map(function(d){ return d.category; }),
+      datasets: [{
+        data: catData.map(function(d){ return Number(d.total_qty); }),
+        backgroundColor: COLORS,
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.5)'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '50%',
+      layout: { padding: { top:2, right:4, bottom:2, left:0 } },
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: {
+            color: lc,
+            font:  { size: 8 },
+            boxWidth: 9,
+            padding: 5,
+            generateLabels: function(ch){
+              var ds = ch.data;
+              return ds.labels.map(function(label, i){
+                var val = ds.datasets[0].data[i];
+                var bg  = ds.datasets[0].backgroundColor[i];
+                return { text: label+(val ? ' '+val : ''), fillStyle:bg, strokeStyle:bg, lineWidth:0, index:i };
+              });
+            }
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: function(c){
+              return ' '+c.label+': '+c.parsed+' ('+(tot>0?(c.parsed/tot*100).toFixed(1):0)+'%)';
+            }
+          }
+        }
+      }
+    },
+    plugins: [makeSlicePlugin('cl')]
+  });
+})();
+
+/* Responsive layout */
+function fixLayout(){
+  var w=window.innerWidth;
+  var r1=document.getElementById('row1'),r2=document.getElementById('row2');
+  if(w<850){
+    if(r1)r1.style.gridTemplateColumns='1fr';
+    if(r2)r2.style.gridTemplateColumns='1fr';
+  } else if(w<1150){
+    if(r1)r1.style.gridTemplateColumns='170px 1fr 1fr';
+    if(r2)r2.style.gridTemplateColumns='1fr 210px';
+  } else {
+    if(r1)r1.style.gridTemplateColumns='190px 1fr 1fr';
+    if(r2)r2.style.gridTemplateColumns='1fr 220px 205px';
+  }
+}
+window.addEventListener('resize',fixLayout);fixLayout();
+</script>
+{% endblock %}

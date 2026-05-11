@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+  <div class="page-title">👥 User Management</div>
+
+  <!-- Pending Approvals (notification section) -->
+  {% if pending_users %}
+  <div class="card" style="border-top:3px solid var(--danger);">
+    <div class="card-title" style="color:var(--danger);">
+      🔔 Pending Approval Requests
+      <span class="badge" style="background:#3D1515;color:#FF9999;margin-left:0.5rem;">{{ pending_users|length }} waiting</span>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Requested At</th>
+            <th>Assign Role</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in pending_users %}
+          <tr style="background:#2B0D0D;">
+            <td><strong style="color:#FF9999;">{{ u.username }}</strong></td>
+            <td>{{ u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else '-' }}</td>
+            <td>
+              <form method="POST" action="{{ url_for('approve_user_route', user_id=u.id) }}" style="display:flex;gap:0.5rem;align-items:center;">
+                <select name="role" class="form-control" style="width:130px;padding:0.4rem;">
+                  <option value="user">User</option>
+                  <option value="admin">Admin</option>
+                  <option value="super_admin">Super Admin</option>
+                </select>
+                <button type="submit" class="btn btn-success btn-sm">✅ Approve</button>
+              </form>
+            </td>
+            <td>
+              <form method="POST" action="{{ url_for('reject_user_route', user_id=u.id) }}" onsubmit="return confirm('Reject this registration?')">
+                <button type="submit" class="btn btn-danger btn-sm">❌ Reject</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="card" style="border-top:3px solid var(--success);">
+    <div style="color:var(--muted);font-size:0.9rem;display:flex;align-items:center;gap:0.5rem;">
+      ✅ <span>No pending registrations. All requests have been processed.</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Add User Manually -->
+  <div class="card">
+    <div class="card-title">➕ Add User Manually</div>
+    <form method="POST" action="{{ url_for('add_user') }}" style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end;">
+      <div class="form-group" style="margin:0;flex:1;min-width:160px;">
+        <label>Username</label>
+        <input type="text" name="username" class="form-control" placeholder="Username" required>
+      </div>
+      <div class="form-group" style="margin:0;flex:1;min-width:160px;">
+        <label>Password</label>
+        <input type="password" name="password" class="form-control" placeholder="Password" required>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>Role</label>
+        <select name="role" class="form-control">
+          <option value="user">User</option>
+          <option value="admin">Admin</option>
+          <option value="super_admin">Super Admin</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary">➕ Create User</button>
+    </form>
+  </div>
+
+  <!-- Approved Users -->
+  <div class="card">
+    <div class="card-title">✅ Approved Users</div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>ID</th><th>Username</th><th>Role</th><th>Created At</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+          <tr>
+            <td>{{ u.id }}</td>
+            <td><strong>{{ u.username }}</strong></td>
+            <td>
+              <span class="badge {% if u.role == 'super_admin' %}badge-total{% elif u.role == 'admin' %}badge-material{% else %}badge-no-defect-item{% endif %}">
+                {{ u.role }}
+              </span>
+            </td>
+            <td>{{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '-' }}</td>
+            <td style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+              <form method="POST" action="{{ url_for('update_user_role_route', user_id=u.id) }}" style="display:flex;gap:0.4rem;align-items:center;">
+                <select name="role" class="form-control" style="width:130px;padding:0.4rem;">
+                  <option value="user" {% if u.role=='user' %}selected{% endif %}>User</option>
+                  <option value="admin" {% if u.role=='admin' %}selected{% endif %}>Admin</option>
+                  <option value="super_admin" {% if u.role=='super_admin' %}selected{% endif %}>Super Admin</option>
+                </select>
+                <button type="submit" class="btn btn-secondary btn-sm">💾</button>
+              </form>
+              <form method="POST" action="{{ url_for('delete_user_route', user_id=u.id) }}" onsubmit="return confirm('Delete user {{ u.username }}?')">
+                <button type="submit" class="btn btn-danger btn-sm">🗑</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" style="text-align:center;color:var(--muted);padding:1.5rem;">No approved users yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

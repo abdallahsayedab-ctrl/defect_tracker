@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Defect Tracker - DEBUG Data Test</title>
+<style>
+table {border-collapse: collapse; width: 100%;}
+th, td {border: 1px solid #ddd; padding: 8px; text-align: left;}
+th {background-color: #f2f2f2;}
+h1 {color: green;}
+.error {color: red; font-weight: bold;}
+</style>
+</head>
+<body>
+<h1>🧪 DEBUG - Raw Data Check</h1>
+<p><strong>Test Time:</strong> {{ now }}</p>
+<p><strong>User:</strong> {{ user_role }}</p>
+<p><strong>Defects Count:</strong> {{ defects|length }}</p>
+
+{% if defects %}
+<h2>✅ DATA FOUND - {{ defects|length }} Records</h2>
+<table>
+<tr><th>ID</th><th>Date</th><th>Model</th><th>Symptom</th><th>Qty</th><th>Pic</th></tr>
+{% for d in defects[:20] %}
+<tr>
+<td>{{ d.id or 'NULL' }}</td>
+<td>{{ d.date or 'NULL' }}</td>
+<td>{{ d.model or 'NULL' }}</td>
+<td>{{ d.symptom or 'NULL' }}</td>
+<td><strong>{{ d.defect_qty or 0 }}</strong></td>
+<td>{{ d.pic or 'NULL' }}</td>
+</tr>
+{% endfor %}
+</table>
+{% else %}
+<h2 style="color: red;">❌ NO DATA - Check DB!</h2>
+<p>Run: psql -U postgres -d defects -f sample_data.sql</p>
+{% endif %}
+
+<h3>Stats:</h3>
+<pre>{{ stats }}</pre>
+
+<a href="/dashboard" style="background: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">← Back to Dashboard</a>
+</body>
+</html>
+

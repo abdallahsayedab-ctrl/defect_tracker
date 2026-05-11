@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+  <div class="page-title">✏️ Edit Defect Record <span style="font-size:0.9rem;color:var(--muted);">#{{ defect.id }}</span></div>
+
+  <div class="card">
+    <form method="POST">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Date *</label>
+          <input type="date" name="date" class="form-control" value="{{ defect.date }}" required>
+        </div>
+        <div class="form-group">
+          <label>PIC</label>
+          <select name="pic" class="form-control">
+            {% for p in pics %}
+            <option value="{{ p }}" {% if defect.pic == p %}selected{% endif %}>{{ p }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Model *</label>
+          <select name="model" class="form-control" required>
+            {% for m in models %}
+            <option value="{{ m }}" {% if defect.model == m %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Shift</label>
+          <select name="shift" class="form-control">
+            <option value="Day" {% if defect.shift == 'Day' %}selected{% endif %}>Day</option>
+            <option value="Night" {% if defect.shift == 'Night' %}selected{% endif %}>Night</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>S/N</label>
+          <input type="text" name="sn" class="form-control" value="{{ defect.sn or '' }}">
+        </div>
+        <div class="form-group">
+          <label>Symptom</label>
+          <input type="text" name="symptom" class="form-control" list="symptom-list" value="{{ defect.symptom or '' }}">
+          <datalist id="symptom-list">
+            {% for s in symptoms %}<option value="{{ s }}">{% endfor %}
+          </datalist>
+        </div>
+        <div class="form-group">
+          <label>NG Station</label>
+          <input type="text" name="ng_station" class="form-control" list="ng-list" value="{{ defect.ng_station or '' }}">
+          <datalist id="ng-list">
+            {% for s in ng_stations %}<option value="{{ s }}">{% endfor %}
+          </datalist>
+        </div>
+        <div class="form-group">
+          <label>Defect Qty</label>
+          <input type="number" name="defect_qty" class="form-control" value="{{ defect.defect_qty or 1 }}" min="1">
+        </div>
+        <div class="form-group">
+          <label>Root Cause</label>
+          <select name="root_cause" class="form-control">
+            <option value="">-- Select --</option>
+            {% for rc in root_causes %}
+            <option value="{{ rc }}" {% if defect.root_cause == rc %}selected{% endif %}>{{ rc }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Related Station</label>
+          <input type="text" name="related_station" class="form-control" value="{{ defect.related_station or '' }}" list="related-list">
+          <datalist id="related-list">
+            {% for s in related_stations %}<option value="{{ s }}">{% endfor %}
+          </datalist>
+        </div>
+        <div class="form-group">
+          <label>Defected Item</label>
+          <select name="defected_item" class="form-control">
+            <option value="">-- Select --</option>
+            {% for i in defected_items %}
+            <option value="{{ i }}" {% if defect.defected_item == i %}selected{% endif %}>{{ i }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Defected Item S/N</label>
+          <input type="text" name="defected_item_sn" class="form-control" value="{{ defect.defected_item_sn or '' }}">
+        </div>
+        <div class="form-group">
+          <label>Defected Item Qty</label>
+          <input type="number" name="defected_item_qty" class="form-control" value="{{ defect.defected_item_qty or 1 }}" min="1">
+        </div>
+        <div class="form-group">
+          <label>Defect PIC</label>
+          <select name="defect_pic" class="form-control">
+            {% for dp in ['PD','IQC','ME','Repair'] %}
+            <option value="{{ dp }}" {% if defect.defect_pic == dp %}selected{% endif %}>{{ dp }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select name="category" class="form-control">
+            {% for c in categories %}
+            <option value="{{ c }}" {% if defect.category == c %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select name="status" class="form-control">
+            {% for s in statuses %}
+            <option value="{{ s }}" {% if defect.status == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Target I/N</label>
+          <input type="number" name="target_in" class="form-control" value="{{ defect.target_in or 0 }}" min="0">
+        </div>
+        <div class="form-group">
+          <label>Target O/T</label>
+          <input type="number" name="target_out" class="form-control" value="{{ defect.target_out or 0 }}" min="0">
+        </div>
+        <div class="form-group">
+          <label>Actual I/N</label>
+          <input type="number" name="actual_in" class="form-control" value="{{ defect.actual_in or 0 }}" min="0">
+        </div>
+        <div class="form-group">
+          <label>Actual O/T</label>
+          <input type="number" name="actual_out" class="form-control" value="{{ defect.actual_out or 0 }}" min="0">
+        </div>
+      </div>
+      <div class="form-group" style="margin-top:1rem;">
+        <label>Remarks</label>
+        <textarea name="remarks" class="form-control" rows="3">{{ defect.remarks or '' }}</textarea>
+      </div>
+      <div style="display:flex;gap:0.8rem;margin-top:1.2rem;flex-wrap:wrap;">
+        <button type="submit" class="btn btn-primary">💾 Update Record</button>
+        <a href="{{ url_for('defect_registration', model=defect.model) }}" class="btn btn-secondary">← Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
